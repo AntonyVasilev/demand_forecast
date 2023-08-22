@@ -1,7 +1,7 @@
 # Demand forecast
 ## The aim of this project is building a forecasting model
 
-Stack: python, numpy, pandas, scikit-learn, SQL, ClickHouse
+Stack: python, numpy, pandas, scikit-learn, SQL, ClickHouse, ClearML
 
 ### Project stages:
 1. Get orders data from DB

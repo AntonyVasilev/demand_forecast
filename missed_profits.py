@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from sklearn.utils import resample
 
-from quantile_regression import MultiTargetModel, split_train_test
+from model import MultiTargetModel, split_train_test
 
 
 def week_missed_profits(
