@@ -110,7 +110,8 @@ def extract_features(
 
     df_features = df_sales.copy()
 
-    ...
+    add_features(df=df_features, features=features)
+    add_targets(df=df_features, targets=targets)
 
     df_features.sort_values(["sku_id", "day"], inplace=True)
 
@@ -133,7 +134,8 @@ def split_train_test(
 
     print("Splitting train and test data...")
 
-    ...
+    df_train, df_test = split_train_test(df=df_features,
+                                         test_days=test_days)
 
     print("Train and test data splitted.")
 
@@ -155,7 +157,10 @@ def fit_model(
 
     print("Training production model...")
 
-    ...
+    model = MultiTargetModel(features=features,
+                             horizons=horizons,
+                             quantiles=quantiles)
+    model.fit(df_features)
 
     print("Production model trained.")
 
@@ -177,7 +182,10 @@ def fit_eval_model(
 
     print("Training evaluation model...")
 
-    ...
+    model = MultiTargetModel(features=features,
+                             horizons=horizons,
+                             quantiles=quantiles)
+    model.fit(df_train)
 
     print("Evaluation model trained.")
 
@@ -194,15 +202,19 @@ def evaluate(
     quantiles: List[float],
     horizons: List[int],
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    from evaluate import evaluate_model
+    from model import evaluate_model
 
     print("Evaluating model...")
 
-    ...
+    predictions = eval_model.predict(data=df_test)
+    losses = evaluate_model(df_true=df_test,
+                            df_pred=predictions,
+                            quantiles=quantiles,
+                            horizons=horizons)
 
     print("Model evaluated.")
 
-    return losses
+    return losses, predictions
 
 
 @PipelineDecorator.component(
@@ -248,13 +260,13 @@ def run_pipeline(
 
     df_sales = extract_sales(orders_df)
 
-    df_features = ...
+    df_features = extract_features(df_sales, features, targets)
 
     model_features = ["price", "qty"] + list(features.keys())
 
-    ... = fit_model(df_features, model_features, quantiles, horizons)
+    model = fit_model(df_features, model_features, quantiles, horizons)
 
-    ...
+    eval_model = fit_eval_model()
 
 
 def main(
