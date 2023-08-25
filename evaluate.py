@@ -1,10 +1,76 @@
-from typing import Tuple
+from typing import Tuple, List
 
 import numpy as np
 import pandas as pd
 from sklearn.utils import resample
 
 from model import MultiTargetModel, split_train_test
+
+
+def quantile_loss(y_true: np.ndarray, y_pred: np.ndarray, quantile: float) -> float:
+    """
+    Calculate the quantile loss between the true and predicted values.
+
+    The quantile loss measures the deviation between the true
+        and predicted values at a specific quantile.
+
+    Parameters
+    ----------
+    y_true : np.ndarray
+        The true values.
+    y_pred : np.ndarray
+        The predicted values.
+    quantile : float
+        The quantile to calculate the loss for.
+
+    Returns
+    -------
+    float
+        The quantile loss.
+    """
+    loss = (quantile * np.maximum(y_true - y_pred, 0) +
+            (1 - quantile) * np.maximum(y_pred - y_true, 0)).mean()
+    return loss
+
+
+def evaluate_model(
+    df_true: pd.DataFrame,
+    df_pred: pd.DataFrame,
+    quantiles: List[float] = [0.1, 0.5, 0.9],
+    horizons: List[int] = [7, 14, 21],
+) -> pd.DataFrame:
+    """Evaluate model on data.
+
+    Parameters
+    ----------
+    df_true : pd.DataFrame
+        True values.
+    df_pred : pd.DataFrame
+        Predicted values.
+    quantiles : List[float], optional
+        Quantiles to evaluate on, by default [0.1, 0.5, 0.9].
+    horizons : List[int], optional
+        Horizons to evaluate on, by default [7, 14, 21].
+
+    Returns
+    -------
+    pd.DataFrame
+        Evaluation results.
+    """
+    losses = {}
+
+    for quantile in quantiles:
+        for horizon in horizons:
+            true = df_true[f"next_{horizon}d"].values
+            pred = df_pred[f"pred_{horizon}d_q{int(quantile*100)}"].values
+            loss = quantile_loss(true, pred, quantile)
+
+            losses[(quantile, horizon)] = loss
+
+    losses = pd.DataFrame(losses, index=["loss"]).T.reset_index()
+    losses.columns = ["quantile", "horizon", "avg_quantile_loss"]  # type: ignore
+
+    return losses
 
 
 def week_missed_profits(
@@ -133,6 +199,7 @@ if __name__ == '__main__':
     )
     model.fit(train_, verbose=True)
     predictions_ = model.predict(test_)
+    losses_ = evaluate_model(test_, predictions_)
     union_data = test_.merge(predictions_, on=['sku_id', 'day'])
     missed_profits_df = week_missed_profits(df=union_data, sales_col='qty', forecast_col='pred_7d_q50')
     missed_profits_ci_ = missed_profits_ci(df=missed_profits_df, missed_profits_col='missed_profits')
