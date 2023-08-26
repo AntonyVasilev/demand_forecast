@@ -30,7 +30,8 @@ def split_train_test(
         Tuple[pd.DataFrame, pd.DataFrame]:
         A tuple containing the train and test DataFrames.
     """
-    df_ = df.dropna().reset_index(drop=True)
+    # df_ = df.dropna().reset_index(drop=True)
+    df_ = df.copy()
     dt_ = pd.to_datetime(df_.day)
     cut_off_day = max(dt_) - timedelta(days=test_days)
 

@@ -11,10 +11,10 @@ from clearml.automation.controller import PipelineDecorator
 from model import MultiTargetModel
 
 
-# @PipelineDecorator.component(
-#     return_values=["orders"],
-#     task_type=TaskTypes.data_processing,
-# )
+@PipelineDecorator.component(
+    return_values=["orders"],
+    task_type=TaskTypes.data_processing,
+)
 def fetch_orders(orders_url: str) -> pd.DataFrame:
     import requests
     from urllib.parse import urlencode
@@ -40,10 +40,10 @@ def fetch_orders(orders_url: str) -> pd.DataFrame:
     return df_orders
 
 
-# @PipelineDecorator.component(
-#     return_values=["sales"],
-#     task_type=TaskTypes.data_processing,
-# )
+@PipelineDecorator.component(
+    return_values=["sales"],
+    task_type=TaskTypes.data_processing,
+)
 def extract_sales(df_orders: pd.DataFrame) -> pd.DataFrame:
     import pandas as pd
     import numpy as np
@@ -95,10 +95,10 @@ def extract_sales(df_orders: pd.DataFrame) -> pd.DataFrame:
     return df_sales
 
 
-# @PipelineDecorator.component(
-#     return_values=["features"],
-#     task_type=TaskTypes.data_processing,
-# )
+@PipelineDecorator.component(
+    return_values=["features"],
+    task_type=TaskTypes.data_processing,
+)
 def extract_features(
     df_sales: pd.DataFrame,
     features: Dict[str, Tuple[str, int, str, Optional[int]]],
@@ -114,17 +114,18 @@ def extract_features(
     add_targets(df=df_features, targets=targets)
 
     df_features.sort_values(["sku_id", "day"], inplace=True)
+    df_features = df_features.dropna().reset_index(drop=True)
 
     print(f"Features extracted. features.csv shape: {df_features.shape}")
 
     return df_features
 
 
-# @PipelineDecorator.component(
-#     return_values=["df_train, df_test"],
-#     cache=True,
-#     task_type=TaskTypes.data_processing,
-# )
+@PipelineDecorator.component(
+    return_values=["df_train, df_test"],
+    cache=True,
+    task_type=TaskTypes.data_processing,
+)
 def split_train_test(
     df_features: pd.DataFrame,
     test_days: int,
@@ -142,11 +143,11 @@ def split_train_test(
     return df_train, df_test
 
 
-# @PipelineDecorator.component(
-#     return_values=["model"],
-#     cache=True,
-#     task_type=TaskTypes.training,
-# )
+@PipelineDecorator.component(
+    return_values=["model"],
+    cache=True,
+    task_type=TaskTypes.training,
+)
 def fit_model(
     df_features: pd.DataFrame,
     features: List[str],
@@ -167,11 +168,11 @@ def fit_model(
     return model
 
 
-# @PipelineDecorator.component(
-#     return_values=["eval_model"],
-#     cache=True,
-#     task_type=TaskTypes.training,
-# )
+@PipelineDecorator.component(
+    return_values=["eval_model"],
+    cache=True,
+    task_type=TaskTypes.training,
+)
 def fit_eval_model(
     df_train: pd.DataFrame,
     features: List[str],
@@ -192,10 +193,10 @@ def fit_eval_model(
     return model
 
 
-# @PipelineDecorator.component(
-#     return_values=["losses, df_pred"],
-#     task_type=TaskTypes.qc,
-# )
+@PipelineDecorator.component(
+    return_values=["losses, df_pred"],
+    task_type=TaskTypes.qc,
+)
 def evaluate(
     eval_model: MultiTargetModel,
     df_test: pd.DataFrame,
@@ -217,9 +218,9 @@ def evaluate(
     return losses, predictions
 
 
-# @PipelineDecorator.component(
-#     task_type=TaskTypes.custom,
-# )
+@PipelineDecorator.component(
+    task_type=TaskTypes.custom,
+)
 def deploy_model(
     model: MultiTargetModel,
     model_path: str,
@@ -227,26 +228,39 @@ def deploy_model(
     df_pred: pd.DataFrame,
 ) -> None:
     import pickle
-    from evaluate import week_missed_profits
 
     print("Check model quality...")
 
     print(f"Losses: {losses}")
 
+    result_list = []
+    horizons = losses['horizon'].unique()
+    for horizon_ in losses['horizon'].unique():
+        min_value = 0
+        values_check = []
+        for quantile_ in losses['quantile'].unique():
+            if df_pred[f'pred_{horizon_}d_q{int(quantile_*100)}'].sum() > min_value:
+                values_check.append(True)
+                min_value = df_pred[f'pred_{horizon_}d_q{int(quantile_*100)}'].sum()
+            else:
+                values_check.append(False)
+        result_list.append(all(values_check))
 
+    print(f'Checking status: {all(result_list)}')
 
     print("Quality checked. Saving production model...")
 
-    ...
+    with open(model_path, 'wb') as m:
+        pickle.dump(model, m)
 
     print("Production model saved!")
 
 
-# @PipelineDecorator.pipeline(
-#     name="Training Pipeline",
-#     project="Stock Management System Task",
-#     version="1.0.0",
-# )
+@PipelineDecorator.pipeline(
+    name="Training Pipeline",
+    project="Stock Management System Task",
+    version="1.0.0",
+)
 def run_pipeline(
     orders_url: str,
     test_days: int,
@@ -347,5 +361,4 @@ def main(
 
 
 if __name__ == "__main__":
-    main()
-    # fire.Fire(main)
+    fire.Fire(main)
