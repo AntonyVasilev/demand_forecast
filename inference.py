@@ -13,7 +13,28 @@ from clearml.automation.controller import PipelineDecorator
     task_type=TaskTypes.data_processing,
 )
 def fetch_orders(orders_url: str) -> pd.DataFrame:
-    ...
+    import requests
+    from urllib.parse import urlencode
+    import pandas as pd
+    from clearml import StorageManager
+
+    print(f"Downloading orders data from {orders_url}...")
+
+    base_url = "https://cloud-api.yandex.net/v1/disk/public/resources/download?"
+    full_url = base_url + urlencode(dict(public_key=orders_url))
+    response = requests.get(full_url)
+    download_url = response.json()["href"]
+
+    local_path = StorageManager.get_local_copy(remote_url=download_url)
+    df_orders = pd.read_csv(
+        local_path,
+        parse_dates=["timestamp"],
+        dayfirst=True,
+    )
+
+    print(f"Orders data downloaded. orders.csv shape: {df_orders.shape}")
+
+    return df_orders
 
 
 @PipelineDecorator.component(
@@ -21,7 +42,54 @@ def fetch_orders(orders_url: str) -> pd.DataFrame:
     task_type=TaskTypes.data_processing,
 )
 def extract_sales(df_orders: pd.DataFrame) -> pd.DataFrame:
-    ...
+    import pandas as pd
+    import numpy as np
+
+    print("Extracting sales data...")
+
+    df_orders["timestamp"] = pd.to_datetime(df_orders["timestamp"], dayfirst=True, format='mixed')
+    df_sales = df_orders.copy()
+
+    df_sales["day"] = df_sales["timestamp"].dt.floor("D")
+
+    df_sales = (
+        df_sales.groupby(["day", "sku_id", "sku", "price"])["qty"].sum().reset_index()
+    )
+
+    all_sku_ids = df_sales["sku_id"].unique()
+    all_dates = pd.date_range(
+        df_sales["day"].min(),
+        df_sales["day"].max(),
+        freq="D",
+    )
+
+    all_dates_sku_df = pd.DataFrame(
+        {
+            "day": np.repeat(all_dates, len(all_sku_ids)),
+            "sku_id": np.tile(all_sku_ids, len(all_dates)),
+        }
+    )
+
+    df_sales = pd.merge(all_dates_sku_df, df_sales, how="left", on=["day", "sku_id"])
+    df_sales["qty"] = df_sales["qty"].fillna(0).astype(int)
+
+    # fill missing sku and price from df
+    df = df_orders[["sku_id", "sku", "price"]].drop_duplicates().reset_index(drop=True)
+    df_sales = pd.merge(
+        df_sales, df[["sku_id", "sku", "price"]], how="left", on="sku_id"
+    )
+    df_sales["sku"] = df_sales["sku_x"].fillna(df_sales["sku_y"])
+    df_sales["price"] = df_sales["price_x"].fillna(df_sales["price_y"])
+    df_sales.drop(columns=["sku_x", "sku_y", "price_x", "price_y"], inplace=True)
+
+    df_sales = df_sales[["day", "sku_id", "sku", "price", "qty"]]
+
+    df_sales.sort_values(by=["sku_id", "day"], inplace=True)
+    df_sales.reset_index(drop=True, inplace=True)
+
+    print(f"Sales data extracted. sales.csv shape: {df_sales.shape}")
+
+    return df_sales
 
 
 @PipelineDecorator.component(
@@ -32,7 +100,20 @@ def extract_features(
     df_sales: pd.DataFrame,
     features: Dict[str, Tuple[str, int, str, Optional[int]]],
 ) -> pd.DataFrame:
-    ...
+    from features import add_features
+
+    print("Extracting features...")
+
+    df_features = df_sales.copy()
+
+    add_features(df=df_features, features=features)
+
+    df_features.sort_values(["sku_id", "day"], inplace=True)
+    df_features = df_features.dropna().reset_index(drop=True)
+
+    print(f"Features extracted. features.csv shape: {df_features.shape}")
+
+    return df_features
 
 
 @PipelineDecorator.component(
@@ -43,7 +124,14 @@ def predict(
     model_path: str,
     df_features: pd.DataFrame,
 ) -> pd.DataFrame:
-    ...
+    import pickle
+
+    with open(model_path, 'rb') as m:
+        model = pickle.load(m)
+
+    predictions = model.predict(data=df_features)
+
+    return predictions
 
 
 @PipelineDecorator.pipeline(
@@ -56,7 +144,16 @@ def run_pipeline(
     model_path: str,
     features: Dict[str, Tuple[str, int, str, Optional[int]]],
 ) -> None:
-    ...
+    orders_df = fetch_orders(orders_url)
+
+    df_sales = extract_sales(orders_df)
+
+    df_features = extract_features(df_sales, features)
+
+    df_pred = predict(model_path, df_features)
+
+    print('Predictions:')
+    print(df_pred)
 
 
 def main(
