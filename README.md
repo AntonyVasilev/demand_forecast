@@ -9,4 +9,5 @@ Stack: python, numpy, pandas, scikit-learn, SQL, ClickHouse, ClearML
 3. Make Quantile Regression models
 4. Calculate Missed Profits
 5. Training Pipeline
-6. ...
+6. Inference Pipeline
+7. FastAPI-service
