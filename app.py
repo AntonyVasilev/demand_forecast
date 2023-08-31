@@ -4,6 +4,7 @@ from typing import List
 
 import numpy as np
 import pandas as pd
+import math
 import uvicorn
 from fastapi import FastAPI
 from fastapi import File
@@ -64,9 +65,9 @@ def how_much_to_order(request_data: SKURequest) -> dict:
 
         assert predictions is not None, "Predictions are not loaded"
 
-        # YOUR CODE HERE
-        ...
-
+        prediction = predictions.loc[predictions['sku_id'] == sku_id,
+                                     f"pred_{horizon_days}d_q{int(confidence_level * 100)}"].values[0]
+        recommended = max(0, math.ceil(prediction - current_stock))
         return {"quantity": recommended}
     except Exception as e:
         return {"error": str(e)}
@@ -83,9 +84,9 @@ def stock_level_forecast(request_data: SKURequest) -> dict:
 
         assert predictions is not None, "Predictions are not loaded"
 
-        # YOUR CODE HERE
-        ...
-
+        prediction = predictions.loc[predictions['sku_id'] == sku_id,
+                                     f"pred_{horizon_days}d_q{int(confidence_level * 100)}"].values[0]
+        stock_level = max(0, math.ceil(current_stock - prediction))
         return {"stock_forecast": stock_level}
 
     except Exception as e:
@@ -102,8 +103,14 @@ def low_stock_sku_list(request_data: LowStockSKURequest) -> dict:
 
         assert predictions is not None, "Predictions are not loaded"
 
-        # YOUR CODE HERE
-        ...
+        low_stock_list = []
+        for sku_info_ in skus:
+            id_ = sku_info_.sku_id
+            stock_ = sku_info_.stock
+            prediction = predictions.loc[predictions['sku_id'] == id_,
+                                         f"pred_{horizon_days}d_q{int(confidence_level * 100)}"].values[0]
+            if stock_ < prediction:
+                low_stock_list.append(id_)
 
         return {"sku_list": low_stock_list}
     except Exception as e:
@@ -112,8 +119,18 @@ def low_stock_sku_list(request_data: LowStockSKURequest) -> dict:
 
 def main() -> None:
     """Run application"""
-    uvicorn.run("main:app", host="localhost", port=5000)
+    uvicorn.run("app:app", host="localhost", port=5000)
 
 
 if __name__ == "__main__":
     main()
+    # request_data_1 = SKURequest(sku=SKUInfo(sku_id=38, stock=20))
+    # to_order = how_much_to_order(request_data_1)
+    # stock_level = stock_level_forecast(request_data_1)
+    #
+    # import random
+    # sku_stocks = [SKUInfo(sku_id=id_, stock=random.randint(0, 100)) for id_ in predictions_['sku_id'].unique()]
+    # request_data_2 = LowStockSKURequest(confidence_level=0.1, horizon_days=7, sku_stock=sku_stocks)
+    # low_stock = low_stock_sku_list(request_data_2)
+    #
+    # print()
